@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter_sound/flutter_sound.dart';
-
 import '../../domain/exceptions/NetworkException.dart';
 
 class AudioService {
@@ -10,7 +9,6 @@ class AudioService {
   final _player = FlutterSoundPlayer();
   final _audioController = StreamController<Uint8List>.broadcast();
 
-  // Dos sockets separados: uno para enviar (streaming) y otro para recibir (listening)
   RawDatagramSocket? _sendSocket;
   RawDatagramSocket? _receiveSocket;
 
@@ -24,8 +22,12 @@ class AudioService {
   }
 
   Future<void> startStreaming(String targetIp, int targetPort) async {
-    // Crear socket de envío si no existe (puerto efímero)
-    _sendSocket ??= await RawDatagramSocket.bind(InternetAddress.anyIPv4, 0);
+    try {
+      // Crear socket de envío si no existe (puerto efímero)
+      _sendSocket ??= await RawDatagramSocket.bind(InternetAddress.anyIPv4, 0);
+    } catch (e) {
+      throw MessageSendException("No se pudo abrir el canal de salida de audio.");
+    }
 
     await _recorder.startRecorder(
       toStream: _audioController,
@@ -34,14 +36,12 @@ class AudioService {
       numChannels: 1,
     );
 
-    // Escuchar los bytes del micrófono y enviarlos por UDP
     _audioController.stream.listen((bytes) {
       _sendSocket?.send(bytes, InternetAddress(targetIp), targetPort);
     });
   }
 
   Future<void> startListening(int port) async {
-    // Iniciar el player en modo stream (solo una vez)
     if (!_isPlayerStreaming) {
       await _player.startPlayerFromStream(
         codec: Codec.pcm16,
@@ -53,31 +53,28 @@ class AudioService {
       _isPlayerStreaming = true;
     }
 
-    // Crear socket de recepción en el puerto indicado
-    _receiveSocket = await RawDatagramSocket.bind(InternetAddress.anyIPv4, port);
+    try {
+      // Crear socket de recepción en el puerto indicado
+      _receiveSocket = await RawDatagramSocket.bind(InternetAddress.anyIPv4, port);
+    } catch (e) {
+      throw ConnectionRefusedException("El puerto $port está ocupado o no se puede usar.");
+    }
 
-    // Escuchar datagramas entrantes y alimentar al player
-    _receiveSocket!.listen((event) async {
+    _receiveSocket!.listen((event) {
       if (event == RawSocketEvent.read) {
         final datagram = _receiveSocket!.receive();
         if (datagram != null) {
-          _receiveSocket!.readEventsEnabled = false;
           try {
-            await _player.feedUint8FromStream(datagram.data);
+            // Quitamos el 'await' y el 'readEventsEnabled' para máxima fluidez
+            _player.feedUint8FromStream(datagram.data);
           } catch (e) {
-            // 1. El player se detuvo o el buffer falló
-            if (!_isPlayerStreaming) {
-              throw AudioStreamException("El streaming de audio se detuvo inesperadamente.");
-            }
-            // 2. Error genérico de la librería de sonido
-            throw AudioStreamException("Error en el buffer de reproducción: $e");
-          } finally {
-            _receiveSocket!.readEventsEnabled = true;
+            // Si el player falla mientras intentamos alimentarlo
+            throw AudioStreamException("Error crítico en el flujo de audio entrante.");
           }
         }
       }
     }, onError: (error) {
-      throw ConnectionLostException("Se perdió la conexión UDP de escucha.");
+      throw ConnectionLostException("Se perdió la conexión del socket de audio.");
     });
   }
 
@@ -105,10 +102,8 @@ class AudioService {
   }
 
   Future<void> dispose() async {
-    // Detener ambas funcionalidades
     await stopListening();
     await stopStreaming();
-    // Cerrar recursos del sistema
     await _recorder.closeRecorder();
     await _player.closePlayer();
     await _audioController.close();
