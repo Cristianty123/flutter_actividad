@@ -1,4 +1,4 @@
-import 'IUserRepository.dart';
+import '../../domain/repository/IUserRepository.dart';
 
 class SetAvatarUseCase {
   final IUserRepository _repo;

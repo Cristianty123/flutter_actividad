@@ -1,4 +1,4 @@
-import 'package:flutter_actividad/login/widget/ConnectionStatus.dart';
+import 'package:flutter_actividad/streaming/domain/model/ConnectionStatus.dart';
 import 'package:flutter_actividad/streaming/domain/model/ConnectionInfo.dart';
 import 'package:flutter_actividad/streaming/domain/model/PeerDevice.dart';
 
