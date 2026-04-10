@@ -13,10 +13,9 @@ class TcpServerService {
   Future<void> start(int port) async {
     _server = await ServerSocket.bind(InternetAddress.anyIPv4, port);
 
-    // Cada vez que un cliente se conecta
     _server!.listen((Socket client) {
       _clients.add(client);
-      final buffer = StringBuffer(); // buffer POR cliente
+      final buffer = StringBuffer();
 
       client.listen(
             (data) {
@@ -32,12 +31,13 @@ class TcpServerService {
             try {
               final json = jsonDecode(part);
               final message = Message.fromMap(json);
+              // Emitir al stream → ChatRepository lo escucha y lo pasa a la UI
               _messageController.add(message);
-              // Retransmitir el string con \n
+              // Retransmitir a los demás clientes (excepto quien lo envió)
               final encoded = utf8.encode('$part\n');
               _broadcastToOthers(encoded, client);
             } catch (e) {
-              // ignorar
+              print("❌ [TcpServerService] Error al decodificar: $e");
             }
           }
         },
@@ -63,9 +63,10 @@ class TcpServerService {
     await _server?.close();
   }
 
+  // broadcast() solo envía por red — NO agrega al stream local.
+  // ChatRepository se encarga de la inyección local del mensaje propio.
   Future<void> broadcast(Message message) async {
     final data = utf8.encode('${jsonEncode(message.toMap())}\n');
-    _messageController.add(message);
     for (final client in _clients) {
       client.add(data);
     }

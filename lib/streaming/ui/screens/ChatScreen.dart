@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../AppDependencies.dart';
+import '../../domain/repository/IUserRepository.dart';
 import '../theme/P5Theme.dart';
 import '../widgets/P5MessageEntry.dart';
 import '../widgets/P5MessageReply.dart';
@@ -23,10 +24,18 @@ class _ChatScreenState extends State<ChatScreen> {
   @override
   void initState() {
     super.initState();
-    widget.deps.chatVm.init();
 
-    // Scroll al fondo cuando llega un mensaje nuevo
+    // Obtener el IP real (ya disponible tras el handshake Wi-Fi) e iniciar
+    // el ViewModel con él. init() cancela cualquier suscripción previa,
+    // por lo que es seguro aunque ChatScreen se reconstruya.
+    _initChatWithCurrentIp();
+
     widget.deps.chatVm.addListener(_scrollToBottom);
+  }
+
+  Future<void> _initChatWithCurrentIp() async {
+    final ip = await widget.deps.userRepo.getIpAddress();
+    widget.deps.chatVm.init(updatedIp: ip);
   }
 
   void _scrollToBottom() {
@@ -78,14 +87,16 @@ class _ChatScreenState extends State<ChatScreen> {
           TextButton(
             onPressed: () => Navigator.pop(context, true),
             child: const Text('SALIR',
-                style: TextStyle(color: kPersonaRed,
-                    fontWeight: FontWeight.w900)),
+                style: TextStyle(
+                    color: kPersonaRed, fontWeight: FontWeight.w900)),
           ),
         ],
       ),
     );
 
     if (confirm == true && mounted) {
+      // Limpiar estado del chat antes de salir
+      widget.deps.chatVm.reset();
       await widget.deps.discoveryVm.disconnect();
       Navigator.pushReplacement(
         context,
@@ -110,7 +121,6 @@ class _ChatScreenState extends State<ChatScreen> {
       body: Stack(
         children: [
           const Positioned.fill(child: P5BackgroundParticles()),
-
           SafeArea(
             child: Column(
               children: [
@@ -147,15 +157,8 @@ class _ChatScreenState extends State<ChatScreen> {
       ),
       child: Row(
         children: [
-          // Botón volver
-          P5NavButton(
-            pointsLeft: true,
-            onTap: _confirmExit,
-          ),
-
+          P5NavButton(pointsLeft: true, onTap: _confirmExit),
           const SizedBox(width: 16),
-
-          // Título
           const Expanded(
             child: Text(
               'PHANTOM CHAT',
@@ -168,8 +171,6 @@ class _ChatScreenState extends State<ChatScreen> {
               ),
             ),
           ),
-
-          // Botón de llamada — el más importante del header
           ListenableBuilder(
             listenable: widget.deps.chatVm,
             builder: (_, __) {
@@ -219,27 +220,15 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Widget _buildMessageList() {
     final messages = widget.deps.chatVm.messages;
-
     return ListView.separated(
       controller: _scrollController,
       padding: const EdgeInsets.symmetric(vertical: 16),
       itemCount: messages.length,
-      separatorBuilder: (_, __) =>
-      const SizedBox(height: kEntrySpacing),
+      separatorBuilder: (_, __) => const SizedBox(height: kEntrySpacing),
       itemBuilder: (_, i) {
         final msg = messages[i];
-
-        // Banner de sistema (JOIN, CALL_START, etc.)
-        if (msg.isSystem) {
-          return _SystemBanner(text: msg.text);
-        }
-
-        // Mensaje mío
-        if (msg.isMe) {
-          return P5MessageReply(text: msg.text);
-        }
-
-        // Mensaje del otro
+        if (msg.isSystem) return _SystemBanner(text: msg.text);
+        if (msg.isMe) return P5MessageReply(text: msg.text);
         return P5MessageEntry(
           text: msg.text,
           senderName: msg.senderName,
@@ -261,7 +250,6 @@ class _ChatScreenState extends State<ChatScreen> {
       ),
       child: Row(
         children: [
-          // Campo de texto estilo P5
           Expanded(
             child: Transform.rotate(
               angle: 0.005,
@@ -291,10 +279,7 @@ class _ChatScreenState extends State<ChatScreen> {
               ),
             ),
           ),
-
           const SizedBox(width: 10),
-
-          // Botón enviar
           GestureDetector(
             onTap: _sendMessage,
             child: Container(
@@ -315,7 +300,6 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 }
 
-// Banner para mensajes de sistema: JOIN, CALL_START, CALL_END
 class _SystemBanner extends StatelessWidget {
   final String text;
   const _SystemBanner({required this.text});

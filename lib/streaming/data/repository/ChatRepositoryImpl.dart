@@ -9,25 +9,16 @@ class ChatRepositoryImpl implements IChatRepository {
   final TcpClientService _client;
   bool _isGroupOwner = false;
 
-  // Puerto estandarizado para evitar errores de conexión rechazada
   static const int chatPort = 8888;
 
-  // Controlador unificado para que la UI vea TODO (enviados y recibidos)
-  final StreamController<Message> _unifiedMessageController = StreamController<Message>.broadcast();
+  final StreamController<Message> _unifiedMessageController =
+  StreamController<Message>.broadcast();
 
-  ChatRepositoryImpl(this._server, this._client) {
-    // Escuchamos lo que llega desde el socket (otros dispositivos)
-    // y lo enviamos al flujo de la UI
-    _server.messageStream.listen((m) {
-      print("📥 [ChatRepository] Mensaje recibido vía Servidor: ${m.content}");
-      _unifiedMessageController.add(m);
-    });
+  // Guardamos las suscripciones para poder cancelarlas
+  StreamSubscription? _serverSub;
+  StreamSubscription? _clientSub;
 
-    _client.messageStream.listen((m) {
-      print("📥 [ChatRepository] Mensaje recibido vía Cliente: ${m.content}");
-      _unifiedMessageController.add(m);
-    });
-  }
+  ChatRepositoryImpl(this._server, this._client);
 
   @override
   Stream<Message> get messageStream => _unifiedMessageController.stream;
@@ -35,58 +26,73 @@ class ChatRepositoryImpl implements IChatRepository {
   @override
   Future<void> startServer() async {
     _isGroupOwner = true;
-    print("🏠 [ChatRepository] Iniciando Servidor en puerto $chatPort");
+
+    // Cancelar suscripción previa si existía
+    await _serverSub?.cancel();
+
     await _server.start(chatPort);
+    print("🏠 [ChatRepository] Servidor iniciado en puerto $chatPort");
+
+    // Solo escuchamos el stream del servidor (mensajes que llegan de clientes remotos)
+    _serverSub = _server.messageStream.listen((m) {
+      print("📥 [ChatRepository] Recibido en servidor: ${m.content}");
+      _unifiedMessageController.add(m);
+    });
   }
 
   @override
   Future<void> connectToServer(String ipAddress) async {
     _isGroupOwner = false;
 
-    // CORRECCIÓN CRUCIAL: Limpiamos la barra '/' que manda Android
-    // para evitar el error de "Failed host lookup"
-    String cleanIp = ipAddress;
-    if (ipAddress.startsWith('/')) {
-      cleanIp = ipAddress.substring(1);
-    }
+    String cleanIp = ipAddress.startsWith('/') ? ipAddress.substring(1) : ipAddress;
+    print("📱 [ChatRepository] Conectando a $cleanIp:$chatPort");
 
-    print("📱 [ChatRepository] Conectando a $cleanIp en puerto $chatPort");
+    // Cancelar suscripción previa si existía
+    await _clientSub?.cancel();
 
     try {
       await _client.connect(cleanIp, chatPort);
     } catch (e) {
-      print("❌ [ChatRepository] Error al conectar el cliente: $e");
+      print("❌ [ChatRepository] Error al conectar: $e");
+      rethrow;
+    }
+
+    // Solo escuchamos el stream del cliente (mensajes que llegan del servidor)
+    _clientSub = _client.messageStream.listen((m) {
+      print("📥 [ChatRepository] Recibido en cliente: ${m.content}");
+      _unifiedMessageController.add(m);
+    });
+  }
+
+  @override
+  Future<void> sendMessage(Message message) async {
+    print("📤 [ChatRepository] Enviando: ${message.content}");
+
+    try {
+      if (_isGroupOwner) {
+        // broadcast() en TcpServerService solo envía a clientes, NO al stream local
+        await _server.broadcast(message);
+      } else {
+        await _client.send(message);
+      }
+
+      // Inyección local UNA sola vez — aquí y solo aquí
+      _unifiedMessageController.add(message);
+      print("✅ [ChatRepository] Mensaje propio añadido localmente");
+    } catch (e) {
+      print("❌ [ChatRepository] Error al enviar: $e");
       rethrow;
     }
   }
 
   @override
-  Future<void> sendMessage(Message message) async {
-    print("📤 [ChatRepository] Intentando enviar: ${message.content}");
-
-    try {
-      if (_isGroupOwner) {
-        // El Servidor envía a todos los clientes conectados
-        await _server.broadcast(message);
-      } else {
-        // El Cliente envía al Servidor
-        await _client.send(message);
-      }
-
-      // INYECCIÓN LOCAL: Para que tú veas tu propio mensaje en pantalla
-      // solo si el envío por socket no falló.
-      _unifiedMessageController.add(message);
-      print("🔄 [ChatRepository] Mensaje propio inyectado localmente");
-
-    } catch (e) {
-      print("❌ [ChatRepository] Error al enviar mensaje: $e");
-      // Opcional: podrías inyectar un mensaje de error al stream para la UI
-    }
-  }
-
-  @override
   Future<void> disconnect() async {
-    print("🔌 [ChatRepository] Desconectando servicios...");
+    print("🔌 [ChatRepository] Desconectando...");
+    await _serverSub?.cancel();
+    await _clientSub?.cancel();
+    _serverSub = null;
+    _clientSub = null;
+
     if (_isGroupOwner) {
       await _server.stop();
     } else {
@@ -95,6 +101,8 @@ class ChatRepositoryImpl implements IChatRepository {
   }
 
   void dispose() {
+    _serverSub?.cancel();
+    _clientSub?.cancel();
     _unifiedMessageController.close();
   }
 }

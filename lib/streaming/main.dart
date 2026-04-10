@@ -29,20 +29,18 @@ import 'ui/screens/SetupScreen.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Solicitar permisos PRIMERO — antes de tocar Wi-Fi Direct o audio
   final permissions = PermissionService();
   final granted = await permissions.requestAll();
 
   if (!granted) {
-    // Si los permisos críticos fueron denegados, mostrar pantalla de error
     runApp(const _PermissionDeniedApp());
     return;
   }
 
   // Infrastructure
-  final wifiService = WifiDirectService();
-  final tcpServer  = TcpServerService();
-  final tcpClient  = TcpClientService();
+  final wifiService  = WifiDirectService();
+  final tcpServer    = TcpServerService();
+  final tcpClient    = TcpClientService();
   final audioService = AudioService();
 
   await wifiService.initialize();
@@ -65,11 +63,10 @@ void main() async {
   final startVoice    = StartVoiceStreamUseCase(audioRepo, wifiRepo, chatRepo);
   final stopVoice     = StopVoiceStreamUseCase(audioRepo, chatRepo);
 
-  // IP inicial vacía — se llenará después del handshake Wi-Fi Direct
-  final myIp = await userRepo.getIpAddress();
-
-  // ViewModels
+  // El IP real no está disponible aún — ChatScreen lo cargará en initState()
+  // justo después del handshake Wi-Fi Direct. Por eso pasamos '' aquí.
   final deps = AppDependencies(
+    userRepo: userRepo, // expuesto para que ChatScreen pueda leer el IP real
     setupVm: SetupViewModel(
       SetUsernameUseCase(userRepo),
       SetAvatarUseCase(userRepo),
@@ -87,7 +84,7 @@ void main() async {
       sendTypingStatus: sendTyping,
       startVoice: startVoice,
       stopVoice: stopVoice,
-      myIp: myIp,
+      myIp: '', // se actualiza en ChatScreen._initChatWithCurrentIp()
     ),
   );
 
