@@ -67,13 +67,13 @@ class _ChatScreenState extends State<ChatScreen> {
         ),
         content: const Text(
           'Se cerrará la conexión con todos los dispositivos.',
-          style: TextStyle(color: Colors.white54),
+          style: TextStyle(color: kPersonaWhite),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
             child: const Text('CANCELAR',
-                style: TextStyle(color: Colors.white54)),
+                style: TextStyle(color: kPersonaWhite)),
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
@@ -106,7 +106,7 @@ class _ChatScreenState extends State<ChatScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: kPersonaBlack,
+      backgroundColor: kPersonaRed,
       body: Stack(
         children: [
           const Positioned.fill(child: P5BackgroundParticles()),
