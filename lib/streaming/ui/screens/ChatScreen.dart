@@ -66,17 +66,20 @@ class _ChatScreenState extends State<ChatScreen> {
                 color: kPersonaWhite,
                 fontWeight: FontWeight.w900,
                 fontStyle: FontStyle.italic)),
-        content: const Text('Se cerrará la conexión con todos los dispositivos.',
+        content: const Text(
+            'Se cerrará la conexión con todos los dispositivos.',
             style: TextStyle(color: kPersonaWhite)),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('CANCELAR', style: TextStyle(color: kPersonaWhite)),
+            child:
+            const Text('CANCELAR', style: TextStyle(color: kPersonaWhite)),
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
             child: const Text('SALIR',
-                style: TextStyle(color: kPersonaRed, fontWeight: FontWeight.w900)),
+                style: TextStyle(
+                    color: kPersonaRed, fontWeight: FontWeight.w900)),
           ),
         ],
       ),
@@ -161,8 +164,8 @@ class _ChatScreenState extends State<ChatScreen> {
                     ? widget.deps.chatVm.endCall
                     : widget.deps.chatVm.startCall,
                 child: Container(
-                  padding:
-                  const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 14, vertical: 8),
                   decoration: BoxDecoration(
                     color: inCall ? Colors.green.shade700 : kPersonaRed,
                     border: Border.all(color: kPersonaWhite, width: 2),
@@ -203,8 +206,7 @@ class _ChatScreenState extends State<ChatScreen> {
       itemBuilder: (_, i) {
         final msg = messages[i];
 
-        // Buscar el siguiente mensaje que NO sea de sistema
-        // (la línea salta banners de sistema igual que el original)
+        // Buscar el siguiente mensaje real (saltar banners de sistema)
         ChatMessageUi? nextMsg;
         for (int j = i + 1; j < messages.length; j++) {
           if (!messages[j].isSystem) {
@@ -213,9 +215,7 @@ class _ChatScreenState extends State<ChatScreen> {
           }
         }
 
-        final bool drawLine = nextMsg != null;
-
-        // Construir widget base
+        // Widget base del mensaje
         Widget msgWidget;
         if (msg.isSystem) {
           msgWidget = _SystemBanner(text: msg.text);
@@ -230,12 +230,17 @@ class _ChatScreenState extends State<ChatScreen> {
           );
         }
 
-        // Envolver con la línea conectora si corresponde
-        if (!msg.isSystem && drawLine) {
+        // Envolver con la línea conectora si hay un siguiente mensaje
+        if (!msg.isSystem && nextMsg != null) {
           msgWidget = CustomPaint(
+            // painter (no foregroundPainter) → dibuja DETRÁS de las burbujas
             painter: _ConnectingLinePainter(
               isMe: msg.isMe,
-              nextIsMe: nextMsg!.isMe,
+              nextIsMe: nextMsg.isMe,
+              // El shift del punto SUPERIOR viene del mensaje actual
+              topShift: msg.lineShift,
+              // El shift del punto INFERIOR viene del mensaje siguiente
+              bottomShift: nextMsg.lineShift,
             ),
             child: msgWidget,
           );
@@ -277,8 +282,8 @@ class _ChatScreenState extends State<ChatScreen> {
                   decoration: const InputDecoration(
                     hintText: 'MESSAGE...',
                     hintStyle: TextStyle(color: Colors.grey),
-                    contentPadding:
-                    EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    contentPadding: EdgeInsets.symmetric(
+                        horizontal: 12, vertical: 10),
                     border: InputBorder.none,
                   ),
                 ),
@@ -306,64 +311,67 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 }
 
-// -------------------------------------------------------------------
-// Painter que dibuja el trapecio negro entre dos mensajes consecutivos
-// Puerto directo de connectingLineModifier.kt
+// Eso hace que la banda se incline en distintas direcciones según qué tan
 // -------------------------------------------------------------------
 class _ConnectingLinePainter extends CustomPainter {
   final bool isMe;
   final bool nextIsMe;
+  final double topShift;    // shift del punto superior (de este mensaje)
+  final double bottomShift; // shift del punto inferior (del siguiente mensaje)
 
-  // Valores sacados de TranscriptSizes en TranscriptState.kt
-  static const double _avatarWidth = 110.0;  // AvatarSize.width
-  static const double _avatarHeight = 90.0;  // AvatarSize.height
-  static const double _lineWidth = 52.0;      // promedio MinLineWidth(44)+MaxLineWidth(60)
-  static const double _entrySpacing = 16.0;   // EntrySpacing
-  static const double _renCenterX = 60.0;     // RenMessageCenter.x
+  // Constantes de TranscriptSizes
+  static const double _avatarWidth   = 110.0;
+  static const double _avatarHeight  = 90.0;
+  static const double _lineWidth     = 52.0;
+  static const double _entrySpacing  = 16.0;
+  static const double _renCenterX    = 60.0; // RenMessageCenter.x
 
-  const _ConnectingLinePainter({required this.isMe, required this.nextIsMe});
+  const _ConnectingLinePainter({
+    required this.isMe,
+    required this.nextIsMe,
+    required this.topShift,
+    required this.bottomShift,
+  });
 
-  /// Calcula los puntos izquierdo y derecho donde la línea toca un mensaje.
-  /// [fromRight] = true → mensaje propio (Reply, anclado a la derecha)
-  /// [fromRight] = false → mensaje ajeno (Entry, anclado al avatar izquierdo)
-  (Offset, Offset) _linePoints({
+  /// Centro horizontal base del ancla, sin aplicar shift.
+  double _baseCenterX({required bool fromRight, required double totalWidth}) {
+    return fromRight
+        ? totalWidth - _renCenterX   // Reply: anclado a la derecha
+        : _avatarWidth / 2;          // Entry: anclado al centro del avatar
+  }
+
+  /// Par de puntos (izquierdo, derecho) del trapecio a una altura [y],
+  /// con el centro desplazado [shift] respecto al ancla base.
+  (Offset, Offset) _points({
     required bool fromRight,
     required double y,
     required double totalWidth,
+    required double shift,
   }) {
-    if (fromRight) {
-      // Centro de la burbuja Reply = lado derecho - _renCenterX
-      final cx = totalWidth - _renCenterX;
-      return (
-      Offset(cx - _lineWidth / 2, y),
-      Offset(cx + _lineWidth / 2, y),
-      );
-    } else {
-      // Centro del avatar izquierdo = _avatarWidth / 2
-      final cx = _avatarWidth / 2;
-      return (
-      Offset(cx - _lineWidth / 2, y),
-      Offset(cx + _lineWidth / 2, y),
-      );
-    }
+    final cx = _baseCenterX(fromRight: fromRight, totalWidth: totalWidth) + shift;
+    return (
+    Offset(cx - _lineWidth / 2, y),
+    Offset(cx + _lineWidth / 2, y),
+    );
   }
 
   @override
   void paint(Canvas canvas, Size size) {
-    // Puntos superiores: mitad del avatar/burbuja de ESTE mensaje
-    final (topLeft, topRight) = _linePoints(
+    // Puntos superiores — mitad vertical del mensaje actual
+    final (topLeft, topRight) = _points(
       fromRight: isMe,
       y: _avatarHeight / 2,
       totalWidth: size.width,
+      shift: topShift,
     );
 
-    // Puntos inferiores: mitad del avatar/burbuja del SIGUIENTE mensaje
-    // (ubicado después del gap kEntrySpacing)
+    // Puntos inferiores — mitad vertical del mensaje siguiente
     final double bottomY = size.height + _entrySpacing + _avatarHeight / 2;
-    final (bottomLeft, bottomRight) = _linePoints(
+    final (bottomLeft, bottomRight) = _points(
       fromRight: nextIsMe,
       y: bottomY,
       totalWidth: size.width,
+      shift: bottomShift,
     );
 
     final path = Path()
@@ -373,7 +381,7 @@ class _ConnectingLinePainter extends CustomPainter {
       ..lineTo(bottomLeft.dx, bottomLeft.dy)
       ..close();
 
-    // Sombra desplazada hacia abajo (translate top = 16.dp del original)
+    // Sombra difuminada desplazada 16px hacia abajo
     final shadowPaint = Paint()
       ..color = Colors.black.withOpacity(0.45)
       ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4);
@@ -389,7 +397,10 @@ class _ConnectingLinePainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_ConnectingLinePainter old) =>
-      old.isMe != isMe || old.nextIsMe != nextIsMe;
+      old.isMe != isMe ||
+          old.nextIsMe != nextIsMe ||
+          old.topShift != topShift ||
+          old.bottomShift != bottomShift;
 }
 
 // -------------------------------------------------------------------

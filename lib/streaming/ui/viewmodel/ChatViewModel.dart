@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math';
 import 'package:flutter/material.dart';
 import '../../application/chat/SendMessageUseCase.dart';
 import '../../application/chat/WatchMessagesUseCase.dart';
@@ -7,6 +8,11 @@ import '../../application/audio/StartVoiceStreamUseCase.dart';
 import '../../application/audio/StopVoiceStreamUseCase.dart';
 import '../../domain/model/Message.dart';
 import '../theme/P5Theme.dart';
+
+// Rango de desplazamiento horizontal de la línea conectora
+// Traducción de MinLineShift(16dp) y MaxLineShift(48dp) en TranscriptSizes
+const double _kMinLineShift = 16.0;
+const double _kMaxLineShift = 48.0;
 
 class ChatMessageUi {
   final String id;
@@ -17,6 +23,11 @@ class ChatMessageUi {
   final bool isSystem;
   final Color accentColor;
 
+  /// Desplazamiento horizontal del punto de anclaje de la línea conectora.
+  /// Positivo = shift a la derecha, negativo = shift a la izquierda.
+  /// Equivale al horizontalShift calculado en TranscriptState.finalizeEntryState().
+  final double lineShift;
+
   ChatMessageUi({
     required this.id,
     required this.text,
@@ -25,6 +36,7 @@ class ChatMessageUi {
     required this.isMe,
     required this.isSystem,
     required this.accentColor,
+    this.lineShift = 0.0,
   });
 }
 
@@ -35,7 +47,6 @@ class ChatViewModel extends ChangeNotifier {
   final StartVoiceStreamUseCase _startVoice;
   final StopVoiceStreamUseCase _stopVoice;
 
-  // Mutable — se actualiza después del handshake Wi-Fi Direct
   String myIp;
 
   ChatViewModel({
@@ -66,29 +77,21 @@ class ChatViewModel extends ChangeNotifier {
     Color(0xFFFF8C00),
   ];
   int _colorIndex = 0;
+  final _rng = Random();
 
   StreamSubscription? _messageSubscription;
   Timer? _typingTimer;
   bool _isTyping = false;
 
-  // Llamar UNA sola vez al entrar al chat.
-  // Si ya hay suscripción activa, la cancela y crea una nueva
-  // (por si el IP cambió tras reconexión).
   void init({String? updatedIp}) {
     if (updatedIp != null && updatedIp.isNotEmpty) {
       myIp = updatedIp;
     }
-
-    // Cancelar suscripción previa — evita escuchar el stream dos veces
     _messageSubscription?.cancel();
     _messageSubscription = null;
-
-    _messageSubscription = _watchMessages.execute().listen((message) {
-      _handleIncomingMessage(message);
-    });
+    _messageSubscription = _watchMessages.execute().listen(_handleIncomingMessage);
   }
 
-  // Limpiar mensajes al salir del chat para que al volver no aparezcan los anteriores
   void reset() {
     messages.clear();
     someoneIsTyping = false;
@@ -99,12 +102,28 @@ class ChatViewModel extends ChangeNotifier {
     _messageSubscription = null;
   }
 
+  /// Calcula el shift aleatorio para la línea conectora.
+  /// Alterna dirección según la posición del mensaje, igual que TranscriptState.kt:
+  ///   direction = if (position % 2 == 0) 1f else -1f
+  ///   shift = randomBetween(MinLineShift, MaxLineShift) * direction
+  /// El primer mensaje (índice 0) no tiene shift — la línea sale recta.
+  double _computeLineShift(int messageIndex) {
+    if (messageIndex == 0) return 0.0;
+    final direction = (messageIndex % 2 == 0) ? 1.0 : -1.0;
+    final magnitude = _kMinLineShift +
+        _rng.nextDouble() * (_kMaxLineShift - _kMinLineShift);
+    return magnitude * direction;
+  }
+
   void _handleIncomingMessage(Message message) {
     if (message.type == MessageType.text) {
       if (typingUserName == message.senderName) {
         someoneIsTyping = false;
         typingUserName = null;
       }
+
+      // El índice que tendrá este mensaje en la lista
+      final idx = messages.length;
 
       messages.add(ChatMessageUi(
         id: message.id,
@@ -113,6 +132,7 @@ class ChatViewModel extends ChangeNotifier {
         isMe: message.senderId == myIp,
         isSystem: false,
         accentColor: _colorForUser(message.senderId),
+        lineShift: _computeLineShift(idx),
       ));
       notifyListeners();
       return;
@@ -122,7 +142,6 @@ class ChatViewModel extends ChangeNotifier {
         message.type == MessageType.audio) {
       switch (message.content) {
         case 'TYPING_START':
-        // No mostrar el indicador para los propios mensajes de typing
           if (message.senderId != myIp) {
             someoneIsTyping = true;
             typingUserName = message.senderName;
