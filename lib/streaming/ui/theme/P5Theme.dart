@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 const kPersonaRed = Color(0xFFC41001);
 const kPersonaBlack = Color(0xFF000000);
 const kPersonaWhite = Color(0xFFFFFFFF);
+const kPersonaGrey = Color(0xFF2E2E2E);
 
 // Tamaños del avatar (traducidos de TranscriptSizes)
 const kAvatarWidth = 110.0;

@@ -5,6 +5,7 @@ import '../widgets/P5Avatar.dart';
 import '../../domain/model/PeerDevice.dart';
 import '../../domain/model/ConnectionStatus.dart';
 import '../widgets/P5BackgroundParticles.dart';
+import '../widgets/P5PulsingButton.dart';
 import 'ChatScreen.dart';
 
 class DiscoveryScreen extends StatefulWidget {
@@ -16,21 +17,31 @@ class DiscoveryScreen extends StatefulWidget {
 }
 
 class _DiscoveryScreenState extends State<DiscoveryScreen> {
+  late VoidCallback _connectionListener;
+
   @override
   void initState() {
     super.initState();
     widget.deps.discoveryVm.init();
 
-    widget.deps.discoveryVm.addListener(() {
+    _connectionListener = () {
       if (widget.deps.discoveryVm.isConnected && mounted) {
+        // Remover listener ANTES de navegar para evitar llamadas duplicadas
+        widget.deps.discoveryVm.removeListener(_connectionListener);
         Navigator.pushReplacement(
           context,
-          MaterialPageRoute(
-            builder: (_) => ChatScreen(deps: widget.deps),
-          ),
+          MaterialPageRoute(builder: (_) => ChatScreen(deps: widget.deps)),
         );
       }
-    });
+    };
+
+    widget.deps.discoveryVm.addListener(_connectionListener);
+  }
+
+  @override
+  void dispose() {
+    widget.deps.discoveryVm.removeListener(_connectionListener);
+    super.dispose();
   }
 
   @override
@@ -175,38 +186,18 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> {
   Widget _buildSearchButton() {
     return Padding(
       padding: const EdgeInsets.fromLTRB(24, 8, 24, 32),
-      child: GestureDetector(
-        onTap: widget.deps.discoveryVm.isSearching
-            ? null
-            : widget.deps.discoveryVm.discoverPeers,
-        child: Transform.rotate(
-          angle: -0.02,
-          child: Container(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(vertical: 18),
-            decoration: BoxDecoration(
-              color: widget.deps.discoveryVm.isSearching
-                  ? Colors.grey.shade800
-                  : kPersonaRed,
-              border: Border.all(color: kPersonaWhite, width: 2),
-              boxShadow: const [
-                BoxShadow(color: kPersonaWhite, offset: Offset(4, 4))
-              ],
-            ),
-            child: Center(
-              child: Text(
-                widget.deps.discoveryVm.isSearching
-                    ? 'BUSCANDO...'
-                    : 'BUSCAR DISPOSITIVOS',
-                style: const TextStyle(
-                  color: kPersonaWhite,
-                  fontSize: 16,
-                  fontWeight: FontWeight.w900,
-                  fontStyle: FontStyle.italic,
-                  letterSpacing: 2,
-                ),
-              ),
-            ),
+      child: Center(
+        child: ListenableBuilder(
+          listenable: widget.deps.discoveryVm,
+          builder: (_, __) => P5PulsingButton(
+            label: widget.deps.discoveryVm.isSearching
+                ? 'BUSCANDO...'
+                : 'BUSCAR DISPOSITIVOS',
+            onTap: widget.deps.discoveryVm.isSearching
+                ? null
+                : widget.deps.discoveryVm.discoverPeers,
+            angle: -0.02,
+            padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 40),
           ),
         ),
       ),

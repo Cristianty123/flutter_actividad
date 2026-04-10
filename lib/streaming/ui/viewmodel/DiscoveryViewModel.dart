@@ -34,6 +34,15 @@ class DiscoveryViewModel extends ChangeNotifier {
 
   // Llamar desde initState de la pantalla
   void init() {
+    // Cancelar suscripciones previas antes de crear nuevas
+    _peersSubscription?.cancel();
+    _statusSubscription?.cancel();
+
+    // Limpiar estado al reiniciar
+    peers = [];
+    status = ConnectionStatus.disconnected;
+    errorMessage = null;
+
     _peersSubscription = _wifiRepo.peersStream.listen((newPeers) {
       peers = newPeers;
       notifyListeners();
@@ -43,7 +52,6 @@ class DiscoveryViewModel extends ChangeNotifier {
       status = newStatus;
       notifyListeners();
 
-      // Cuando se conecta, inicializar el chat automáticamente
       if (newStatus == ConnectionStatus.connected) {
         _initializeChat.execute().catchError((e) {
           errorMessage = 'Error al iniciar chat: $e';

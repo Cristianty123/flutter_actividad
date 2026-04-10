@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../AppDependencies.dart';
 import '../theme/P5Theme.dart';
+import '../widgets/P5PulsingButton.dart';
 import 'DiscoveryScreen.dart';
 
 class SetupScreen extends StatefulWidget {
@@ -196,50 +197,32 @@ class _SetupScreenState extends State<SetupScreen> {
                   const Spacer(),
 
                   // Botón CONTINUAR estilo P5
-                  ListenableBuilder(
-                    listenable: widget.deps.setupVm,
-                    builder: (_, __) {
-                      return GestureDetector(
-                        onTap: widget.deps.setupVm.isLoading ? null : _continue,
-                        child: Align(
-                          alignment: Alignment.centerRight,
-                          child: Transform.rotate(
-                            angle: -0.03,
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 32, vertical: 16),
-                              decoration: BoxDecoration(
-                                color: kPersonaRed,
-                                border: Border.all(
-                                    color: kPersonaWhite, width: 2),
-                                boxShadow: const [
-                                  BoxShadow(
-                                      color: kPersonaWhite,
-                                      offset: Offset(4, 4))
-                                ],
-                              ),
-                              child: widget.deps.setupVm.isLoading
-                                  ? const SizedBox(
-                                width: 20,
-                                height: 20,
-                                child: CircularProgressIndicator(
-                                    color: kPersonaWhite,
-                                    strokeWidth: 2),
-                              )
-                                  : const Text(
-                                'LET\'S GO',
-                                style: TextStyle(
-                                  color: kPersonaWhite,
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.w900,
-                                  fontStyle: FontStyle.italic,
-                                ),
-                              ),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: ListenableBuilder(
+                      listenable: widget.deps.setupVm,
+                      builder: (_, __) {
+                        // Si está cargando, mostramos el indicador para no romper el flujo
+                        if (widget.deps.setupVm.isLoading) {
+                          return const SizedBox(
+                            width: 30, // Un poco más grande para que sea fácil de ver
+                            height: 30,
+                            child: CircularProgressIndicator(
+                              color: kPersonaWhite,
+                              strokeWidth: 3,
                             ),
-                          ),
-                        ),
-                      );
-                    },
+                          );
+                        }
+
+                        // Si no está cargando, mostramos tu nuevo botón animado
+                        return P5PulsingButton(
+                          label: "LET'S GO",
+                          onTap: _continue,
+                          angle: -0.03,
+                          fontSize: 18,
+                        );
+                      },
+                    ),
                   ),
 
                   const SizedBox(height: 40),

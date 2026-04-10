@@ -60,7 +60,11 @@ class WifiDirectService {
   Future<void> disconnect() async {
     await _plugin.disconnect();
     await _plugin.unregister();
+    _lastInfo = null; // limpiar info cacheada
     _statusController.add(ConnectionStatus.disconnected);
+
+    // Re-registrar para que el siguiente discoverPeers funcione
+    await _plugin.register();
   }
 
   void dispose() {

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../AppDependencies.dart';
 import '../theme/P5Theme.dart';
 import '../viewmodel/ChatViewModel.dart';
+import '../widgets/P5ConfirmDialog.dart';
 import '../widgets/P5MessageEntry.dart';
 import '../widgets/P5MessageReply.dart';
 import '../widgets/P5NavButton.dart';
@@ -53,39 +54,15 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Future<void> _confirmExit() async {
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (_) => AlertDialog(
-        backgroundColor: kPersonaBlack,
-        shape: const RoundedRectangleBorder(
-          side: BorderSide(color: kPersonaRed, width: 2),
-          borderRadius: BorderRadius.zero,
-        ),
-        title: const Text('SALIR DEL CHAT',
-            style: TextStyle(
-                color: kPersonaWhite,
-                fontWeight: FontWeight.w900,
-                fontStyle: FontStyle.italic)),
-        content: const Text(
-            'Se cerrará la conexión con todos los dispositivos.',
-            style: TextStyle(color: kPersonaWhite)),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child:
-            const Text('CANCELAR', style: TextStyle(color: kPersonaWhite)),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('SALIR',
-                style: TextStyle(
-                    color: kPersonaRed, fontWeight: FontWeight.w900)),
-          ),
-        ],
-      ),
+    final confirm = await P5ConfirmDialog.show(
+      context,
+      title: 'SALIR DEL CHAT',
+      message: 'Se cerrará la conexión con todos los dispositivos.',
+      confirmLabel: 'SALIR',
+      cancelLabel: 'QUEDARSE',
     );
 
-    if (confirm == true && mounted) {
+    if (confirm && mounted) {
       widget.deps.chatVm.reset();
       await widget.deps.discoveryVm.disconnect();
       Navigator.pushReplacement(
