@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../AppDependencies.dart';
-import '../../domain/repository/IUserRepository.dart';
 import '../theme/P5Theme.dart';
+import '../viewmodel/ChatViewModel.dart';
 import '../widgets/P5MessageEntry.dart';
 import '../widgets/P5MessageReply.dart';
 import '../widgets/P5NavButton.dart';
@@ -24,12 +24,7 @@ class _ChatScreenState extends State<ChatScreen> {
   @override
   void initState() {
     super.initState();
-
-    // Obtener el IP real (ya disponible tras el handshake Wi-Fi) e iniciar
-    // el ViewModel con él. init() cancela cualquier suscripción previa,
-    // por lo que es seguro aunque ChatScreen se reconstruya.
     _initChatWithCurrentIp();
-
     widget.deps.chatVm.addListener(_scrollToBottom);
   }
 
@@ -66,42 +61,33 @@ class _ChatScreenState extends State<ChatScreen> {
           side: BorderSide(color: kPersonaRed, width: 2),
           borderRadius: BorderRadius.zero,
         ),
-        title: const Text(
-          'SALIR DEL CHAT',
-          style: TextStyle(
-            color: kPersonaWhite,
-            fontWeight: FontWeight.w900,
-            fontStyle: FontStyle.italic,
-          ),
-        ),
-        content: const Text(
-          'Se cerrará la conexión con todos los dispositivos.',
-          style: TextStyle(color: kPersonaWhite),
-        ),
+        title: const Text('SALIR DEL CHAT',
+            style: TextStyle(
+                color: kPersonaWhite,
+                fontWeight: FontWeight.w900,
+                fontStyle: FontStyle.italic)),
+        content: const Text('Se cerrará la conexión con todos los dispositivos.',
+            style: TextStyle(color: kPersonaWhite)),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('CANCELAR',
-                style: TextStyle(color: kPersonaWhite)),
+            child: const Text('CANCELAR', style: TextStyle(color: kPersonaWhite)),
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
             child: const Text('SALIR',
-                style: TextStyle(
-                    color: kPersonaRed, fontWeight: FontWeight.w900)),
+                style: TextStyle(color: kPersonaRed, fontWeight: FontWeight.w900)),
           ),
         ],
       ),
     );
 
     if (confirm == true && mounted) {
-      // Limpiar estado del chat antes de salir
       widget.deps.chatVm.reset();
       await widget.deps.discoveryVm.disconnect();
       Navigator.pushReplacement(
         context,
-        MaterialPageRoute(
-            builder: (_) => DiscoveryScreen(deps: widget.deps)),
+        MaterialPageRoute(builder: (_) => DiscoveryScreen(deps: widget.deps)),
       );
     }
   }
@@ -149,27 +135,22 @@ class _ChatScreenState extends State<ChatScreen> {
   Widget _buildHeader() {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      decoration: BoxDecoration(
+      decoration: const BoxDecoration(
         color: kPersonaBlack,
-        border: const Border(
-          bottom: BorderSide(color: kPersonaRed, width: 2),
-        ),
+        border: Border(bottom: BorderSide(color: kPersonaRed, width: 2)),
       ),
       child: Row(
         children: [
           P5NavButton(pointsLeft: true, onTap: _confirmExit),
           const SizedBox(width: 16),
           const Expanded(
-            child: Text(
-              'PHANTOM CHAT',
-              style: TextStyle(
-                color: kPersonaWhite,
-                fontSize: 18,
-                fontWeight: FontWeight.w900,
-                fontStyle: FontStyle.italic,
-                letterSpacing: 2,
-              ),
-            ),
+            child: Text('PHANTOM CHAT',
+                style: TextStyle(
+                    color: kPersonaWhite,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w900,
+                    fontStyle: FontStyle.italic,
+                    letterSpacing: 2)),
           ),
           ListenableBuilder(
             listenable: widget.deps.chatVm,
@@ -180,8 +161,8 @@ class _ChatScreenState extends State<ChatScreen> {
                     ? widget.deps.chatVm.endCall
                     : widget.deps.chatVm.startCall,
                 child: Container(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 14, vertical: 8),
+                  padding:
+                  const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                   decoration: BoxDecoration(
                     color: inCall ? Colors.green.shade700 : kPersonaRed,
                     border: Border.all(color: kPersonaWhite, width: 2),
@@ -192,21 +173,15 @@ class _ChatScreenState extends State<ChatScreen> {
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(
-                        inCall ? Icons.call_end : Icons.call,
-                        color: kPersonaWhite,
-                        size: 18,
-                      ),
+                      Icon(inCall ? Icons.call_end : Icons.call,
+                          color: kPersonaWhite, size: 18),
                       const SizedBox(width: 6),
-                      Text(
-                        inCall ? 'COLGAR' : 'LLAMAR',
-                        style: const TextStyle(
-                          color: kPersonaWhite,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w900,
-                          fontStyle: FontStyle.italic,
-                        ),
-                      ),
+                      Text(inCall ? 'COLGAR' : 'LLAMAR',
+                          style: const TextStyle(
+                              color: kPersonaWhite,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w900,
+                              fontStyle: FontStyle.italic)),
                     ],
                   ),
                 ),
@@ -220,20 +195,55 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Widget _buildMessageList() {
     final messages = widget.deps.chatVm.messages;
-    return ListView.separated(
+
+    return ListView.builder(
       controller: _scrollController,
       padding: const EdgeInsets.symmetric(vertical: 16),
       itemCount: messages.length,
-      separatorBuilder: (_, __) => const SizedBox(height: kEntrySpacing),
       itemBuilder: (_, i) {
         final msg = messages[i];
-        if (msg.isSystem) return _SystemBanner(text: msg.text);
-        if (msg.isMe) return P5MessageReply(text: msg.text);
-        return P5MessageEntry(
-          text: msg.text,
-          senderName: msg.senderName,
-          avatarPath: msg.avatarPath,
-          accentColor: msg.accentColor,
+
+        // Buscar el siguiente mensaje que NO sea de sistema
+        // (la línea salta banners de sistema igual que el original)
+        ChatMessageUi? nextMsg;
+        for (int j = i + 1; j < messages.length; j++) {
+          if (!messages[j].isSystem) {
+            nextMsg = messages[j];
+            break;
+          }
+        }
+
+        final bool drawLine = nextMsg != null;
+
+        // Construir widget base
+        Widget msgWidget;
+        if (msg.isSystem) {
+          msgWidget = _SystemBanner(text: msg.text);
+        } else if (msg.isMe) {
+          msgWidget = P5MessageReply(text: msg.text);
+        } else {
+          msgWidget = P5MessageEntry(
+            text: msg.text,
+            senderName: msg.senderName,
+            avatarPath: msg.avatarPath,
+            accentColor: msg.accentColor,
+          );
+        }
+
+        // Envolver con la línea conectora si corresponde
+        if (!msg.isSystem && drawLine) {
+          msgWidget = CustomPaint(
+            painter: _ConnectingLinePainter(
+              isMe: msg.isMe,
+              nextIsMe: nextMsg!.isMe,
+            ),
+            child: msgWidget,
+          );
+        }
+
+        return Padding(
+          padding: const EdgeInsets.only(bottom: kEntrySpacing),
+          child: msgWidget,
         );
       },
     );
@@ -242,11 +252,9 @@ class _ChatScreenState extends State<ChatScreen> {
   Widget _buildInputBar() {
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-      decoration: BoxDecoration(
+      decoration: const BoxDecoration(
         color: kPersonaBlack,
-        border: const Border(
-          top: BorderSide(color: kPersonaRed, width: 2),
-        ),
+        border: Border(top: BorderSide(color: kPersonaRed, width: 2)),
       ),
       child: Row(
         children: [
@@ -265,14 +273,12 @@ class _ChatScreenState extends State<ChatScreen> {
                   controller: _textController,
                   onChanged: widget.deps.chatVm.onTextChanged,
                   style: const TextStyle(
-                    color: kPersonaBlack,
-                    fontWeight: FontWeight.w900,
-                  ),
+                      color: kPersonaBlack, fontWeight: FontWeight.w900),
                   decoration: const InputDecoration(
                     hintText: 'MESSAGE...',
                     hintStyle: TextStyle(color: Colors.grey),
-                    contentPadding: EdgeInsets.symmetric(
-                        horizontal: 12, vertical: 10),
+                    contentPadding:
+                    EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                     border: InputBorder.none,
                   ),
                 ),
@@ -300,6 +306,95 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 }
 
+// -------------------------------------------------------------------
+// Painter que dibuja el trapecio negro entre dos mensajes consecutivos
+// Puerto directo de connectingLineModifier.kt
+// -------------------------------------------------------------------
+class _ConnectingLinePainter extends CustomPainter {
+  final bool isMe;
+  final bool nextIsMe;
+
+  // Valores sacados de TranscriptSizes en TranscriptState.kt
+  static const double _avatarWidth = 110.0;  // AvatarSize.width
+  static const double _avatarHeight = 90.0;  // AvatarSize.height
+  static const double _lineWidth = 52.0;      // promedio MinLineWidth(44)+MaxLineWidth(60)
+  static const double _entrySpacing = 16.0;   // EntrySpacing
+  static const double _renCenterX = 60.0;     // RenMessageCenter.x
+
+  const _ConnectingLinePainter({required this.isMe, required this.nextIsMe});
+
+  /// Calcula los puntos izquierdo y derecho donde la línea toca un mensaje.
+  /// [fromRight] = true → mensaje propio (Reply, anclado a la derecha)
+  /// [fromRight] = false → mensaje ajeno (Entry, anclado al avatar izquierdo)
+  (Offset, Offset) _linePoints({
+    required bool fromRight,
+    required double y,
+    required double totalWidth,
+  }) {
+    if (fromRight) {
+      // Centro de la burbuja Reply = lado derecho - _renCenterX
+      final cx = totalWidth - _renCenterX;
+      return (
+      Offset(cx - _lineWidth / 2, y),
+      Offset(cx + _lineWidth / 2, y),
+      );
+    } else {
+      // Centro del avatar izquierdo = _avatarWidth / 2
+      final cx = _avatarWidth / 2;
+      return (
+      Offset(cx - _lineWidth / 2, y),
+      Offset(cx + _lineWidth / 2, y),
+      );
+    }
+  }
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    // Puntos superiores: mitad del avatar/burbuja de ESTE mensaje
+    final (topLeft, topRight) = _linePoints(
+      fromRight: isMe,
+      y: _avatarHeight / 2,
+      totalWidth: size.width,
+    );
+
+    // Puntos inferiores: mitad del avatar/burbuja del SIGUIENTE mensaje
+    // (ubicado después del gap kEntrySpacing)
+    final double bottomY = size.height + _entrySpacing + _avatarHeight / 2;
+    final (bottomLeft, bottomRight) = _linePoints(
+      fromRight: nextIsMe,
+      y: bottomY,
+      totalWidth: size.width,
+    );
+
+    final path = Path()
+      ..moveTo(topLeft.dx, topLeft.dy)
+      ..lineTo(topRight.dx, topRight.dy)
+      ..lineTo(bottomRight.dx, bottomRight.dy)
+      ..lineTo(bottomLeft.dx, bottomLeft.dy)
+      ..close();
+
+    // Sombra desplazada hacia abajo (translate top = 16.dp del original)
+    final shadowPaint = Paint()
+      ..color = Colors.black.withOpacity(0.45)
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4);
+
+    canvas.save();
+    canvas.translate(0, 16);
+    canvas.drawPath(path, shadowPaint);
+    canvas.restore();
+
+    // Trapecio negro
+    canvas.drawPath(path, Paint()..color = Colors.black);
+  }
+
+  @override
+  bool shouldRepaint(_ConnectingLinePainter old) =>
+      old.isMe != isMe || old.nextIsMe != nextIsMe;
+}
+
+// -------------------------------------------------------------------
+// Banner de sistema
+// -------------------------------------------------------------------
 class _SystemBanner extends StatelessWidget {
   final String text;
   const _SystemBanner({required this.text});
