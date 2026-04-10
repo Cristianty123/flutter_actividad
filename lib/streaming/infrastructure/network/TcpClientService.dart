@@ -13,11 +13,34 @@ class TcpClientService {
   Future<void> connect(String ipAddress, int port) async {
     _socket = await Socket.connect(ipAddress, port);
 
+    // Buffer para acumular datos fragmentados
+    final StringBuffer _buffer = StringBuffer();
+
     _socket!.listen(
           (data) {
-        final json = jsonDecode(utf8.decode(data));
-        final message = Message.fromMap(json);
-        _messageController.add(message);
+        _buffer.write(utf8.decode(data));
+
+        // Procesar todos los mensajes completos que hayan llegado
+        // Usamos newline como delimitador
+        final raw = _buffer.toString();
+        final parts = raw.split('\n');
+
+        // El último elemento puede estar incompleto, lo guardamos
+        _buffer.clear();
+        _buffer.write(parts.last);
+
+        // Procesar todos menos el último (que puede estar incompleto)
+        for (int i = 0; i < parts.length - 1; i++) {
+          final part = parts[i].trim();
+          if (part.isEmpty) continue;
+          try {
+            final json = jsonDecode(part);
+            final message = Message.fromMap(json);
+            _messageController.add(message);
+          } catch (e) {
+            // ignorar chunks malformados
+          }
+        }
       },
       onError: (e) => throw ConnectionLostException(e.toString()),
       onDone: () => _messageController.close(),
@@ -26,7 +49,7 @@ class TcpClientService {
 
   Future<void> send(Message message) async {
     if (_socket == null) throw MessageSendException('Socket no conectado');
-    final data = utf8.encode(jsonEncode(message.toMap()));
+    final data = utf8.encode('${jsonEncode(message.toMap())}\n');
     _socket!.add(data);
   }
 

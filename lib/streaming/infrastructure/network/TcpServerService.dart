@@ -16,17 +16,30 @@ class TcpServerService {
     // Cada vez que un cliente se conecta
     _server!.listen((Socket client) {
       _clients.add(client);
+      final buffer = StringBuffer(); // buffer POR cliente
 
       client.listen(
             (data) {
-          final json = jsonDecode(utf8.decode(data));
-          final message = Message.fromMap(json);
+          buffer.write(utf8.decode(data));
+          final raw = buffer.toString();
+          final parts = raw.split('\n');
+          buffer.clear();
+          buffer.write(parts.last);
 
-          // Agrega al stream local
-          _messageController.add(message);
-
-          // Retransmite a todos los demás clientes (lógica del GO)
-          _broadcastToOthers(data, client);
+          for (int i = 0; i < parts.length - 1; i++) {
+            final part = parts[i].trim();
+            if (part.isEmpty) continue;
+            try {
+              final json = jsonDecode(part);
+              final message = Message.fromMap(json);
+              _messageController.add(message);
+              // Retransmitir el string con \n
+              final encoded = utf8.encode('$part\n');
+              _broadcastToOthers(encoded, client);
+            } catch (e) {
+              // ignorar
+            }
+          }
         },
         onDone: () => _clients.remove(client),
         onError: (_) => _clients.remove(client),
@@ -51,12 +64,8 @@ class TcpServerService {
   }
 
   Future<void> broadcast(Message message) async {
-    final data = utf8.encode(jsonEncode(message.toMap()));
-
-    // Lo agrega al stream local para que la UI del GO también lo vea
+    final data = utf8.encode('${jsonEncode(message.toMap())}\n');
     _messageController.add(message);
-
-    // Lo envía a todos los clientes conectados
     for (final client in _clients) {
       client.add(data);
     }
