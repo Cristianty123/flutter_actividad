@@ -5,7 +5,7 @@ import '../model/Users.dart';
 import 'database/DatabaseHelper.dart';
 
 class AuthService {
-  final String baseUrl = "http://192.168.1.45:8080/authenticate";
+  final String baseUrl = "http://10.153.72.75:8080/authenticate";
 
   final DatabaseHelper _dbHelper = DatabaseHelper();
 

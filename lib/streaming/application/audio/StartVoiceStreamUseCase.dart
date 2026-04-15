@@ -12,10 +12,11 @@ class StartVoiceStreamUseCase {
 
   Future<void> execute() async {
     final info = await _wifi.getConnectionInfo();
-    final targetIp = info.groupOwnerAddress ?? '192.168.49.1';
+    String targetIp = info.groupOwnerAddress ?? '192.168.49.1';
 
-    // Notifica a todos via TCP que vas a hablar
-    // Los demas abriran sus sockets UDP al recibir este mensaje
+    // mismo fix que en ChatRepositoryImpl
+    if (targetIp.startsWith('/')) targetIp = targetIp.substring(1);
+
     await _chat.sendMessage(Message(
       id: DateTime.now().toString(),
       senderId: targetIp,
@@ -25,7 +26,7 @@ class StartVoiceStreamUseCase {
       type: MessageType.audio,
     ));
 
-    await _audio.startListening(9001);           // puerto UDP para recibir
-    await _audio.startStreaming(targetIp, 9001); // se empieza a enviar la voz
+    await _audio.startListening(9001);
+    await _audio.startStreaming(targetIp, 9001);
   }
 }

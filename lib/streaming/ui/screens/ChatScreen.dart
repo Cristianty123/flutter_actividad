@@ -8,6 +8,7 @@ import '../widgets/P5MessageReply.dart';
 import '../widgets/P5NavButton.dart';
 import '../widgets/P5TypingIndicator.dart';
 import '../widgets/P5BackgroundParticles.dart';
+import 'CallState.dart';
 import 'DiscoveryScreen.dart';
 
 class ChatScreen extends StatefulWidget {
@@ -27,6 +28,43 @@ class _ChatScreenState extends State<ChatScreen> {
     super.initState();
     _initChatWithCurrentIp();
     widget.deps.chatVm.addListener(_scrollToBottom);
+  }
+
+  void _openCallScreen({required bool incoming}) {
+    final vm = widget.deps.chatVm;
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => CallScreen(
+          callerName: incoming
+              ? vm.incomingCallerName
+              : 'Tú',
+          callerInitial: incoming
+              ? vm.incomingCallerInitial
+              : (vm.myIp.isNotEmpty ? vm.myIp[0] : '?'),
+          callerColor: incoming
+              ? vm.incomingCallerColor
+              : kPersonaRed,
+          initialState: incoming
+              ? CallState.incoming
+              : CallState.calling,
+          onHangUp: () async {
+            await vm.endCall();
+            if (mounted) Navigator.pop(context);
+          },
+          onAccept: incoming
+              ? () => vm.acceptCall()
+              : null,
+        ),
+      ),
+    ).then((_) {
+      // Al volver del CallScreen, si la llamada sigue activa, colgarla
+      if (vm.isInCall) vm.endCall();
+    });
+
+    // Si somos nosotros quien llama, iniciar el audio
+    if (!incoming) vm.startCall();
   }
 
   Future<void> _initChatWithCurrentIp() async {
@@ -136,13 +174,22 @@ class _ChatScreenState extends State<ChatScreen> {
             listenable: widget.deps.chatVm,
             builder: (_, __) {
               final inCall = widget.deps.chatVm.isInCall;
+              final incoming = widget.deps.chatVm.incomingCall;
+
+              // Si hay llamada entrante, mostrar banner y abrir CallScreen
+              if (incoming) {
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  if (mounted && widget.deps.chatVm.incomingCall) {
+                    widget.deps.chatVm.incomingCall = false; // evitar loop
+                    _openCallScreen(incoming: true);
+                  }
+                });
+              }
+
               return GestureDetector(
-                onTap: inCall
-                    ? widget.deps.chatVm.endCall
-                    : widget.deps.chatVm.startCall,
+                onTap: inCall ? widget.deps.chatVm.endCall : () => _openCallScreen(incoming: false),
                 child: Container(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 14, vertical: 8),
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                   decoration: BoxDecoration(
                     color: inCall ? Colors.green.shade700 : kPersonaRed,
                     border: Border.all(color: kPersonaWhite, width: 2),

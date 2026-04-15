@@ -68,6 +68,12 @@ class ChatViewModel extends ChangeNotifier {
   bool isInCall = false;
   String? errorMessage;
 
+  // Campos agregados para llamadas entrantes
+  bool incomingCall = false;
+  String incomingCallerName = '';
+  String incomingCallerInitial = '';
+  Color incomingCallerColor = kPersonaRed;
+
   final Map<String, Color> _userColors = {};
   final List<Color> _colorPalette = const [
     Color(0xFFFE93C9),
@@ -97,6 +103,7 @@ class ChatViewModel extends ChangeNotifier {
     someoneIsTyping = false;
     typingUserName = null;
     isInCall = false;
+    incomingCall = false; // Limpiar también en reset
     errorMessage = null;
     _messageSubscription?.cancel();
     _messageSubscription = null;
@@ -168,6 +175,14 @@ class ChatViewModel extends ChangeNotifier {
           break;
 
         case 'CALL_START':
+        // Si no soy yo quien llamó, es una llamada entrante
+          if (message.senderId != myIp) {
+            incomingCall = true;
+            incomingCallerName = message.senderName;
+            incomingCallerInitial =
+            message.senderName.isNotEmpty ? message.senderName[0] : '?';
+            incomingCallerColor = _colorForUser(message.senderId);
+          }
           isInCall = true;
           messages.add(ChatMessageUi(
             id: message.id,
@@ -182,6 +197,7 @@ class ChatViewModel extends ChangeNotifier {
 
         case 'CALL_END':
           isInCall = false;
+          incomingCall = false; // limpiar también
           messages.add(ChatMessageUi(
             id: message.id,
             text: 'La llamada ha terminado',
@@ -247,6 +263,13 @@ class ChatViewModel extends ChangeNotifier {
       errorMessage = 'Error al terminar llamada: $e';
       notifyListeners();
     }
+  }
+
+  Future<void> acceptCall() async {
+    incomingCall = false;
+    notifyListeners();
+    // Abrir audio en ambas direcciones
+    await _startVoice.execute();
   }
 
   Color _colorForUser(String ip) {
