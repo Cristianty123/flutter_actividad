@@ -9,8 +9,6 @@ import '../../application/audio/StopVoiceStreamUseCase.dart';
 import '../../domain/model/Message.dart';
 import '../theme/P5Theme.dart';
 
-// Rango de desplazamiento horizontal de la línea conectora
-// Traducción de MinLineShift(16dp) y MaxLineShift(48dp) en TranscriptSizes
 const double _kMinLineShift = 16.0;
 const double _kMaxLineShift = 48.0;
 
@@ -22,10 +20,6 @@ class ChatMessageUi {
   final bool isMe;
   final bool isSystem;
   final Color accentColor;
-
-  /// Desplazamiento horizontal del punto de anclaje de la línea conectora.
-  /// Positivo = shift a la derecha, negativo = shift a la izquierda.
-  /// Equivale al horizontalShift calculado en TranscriptState.finalizeEntryState().
   final double lineShift;
 
   ChatMessageUi({
@@ -68,7 +62,7 @@ class ChatViewModel extends ChangeNotifier {
   bool isInCall = false;
   String? errorMessage;
 
-  // Campos agregados para llamadas entrantes
+  // Llamada entrante — usamos un flag de un solo disparo
   bool incomingCall = false;
   String incomingCallerName = '';
   String incomingCallerInitial = '';
@@ -90,12 +84,11 @@ class ChatViewModel extends ChangeNotifier {
   bool _isTyping = false;
 
   void init({String? updatedIp}) {
-    if (updatedIp != null && updatedIp.isNotEmpty) {
-      myIp = updatedIp;
-    }
+    if (updatedIp != null && updatedIp.isNotEmpty) myIp = updatedIp;
     _messageSubscription?.cancel();
     _messageSubscription = null;
-    _messageSubscription = _watchMessages.execute().listen(_handleIncomingMessage);
+    _messageSubscription =
+        _watchMessages.execute().listen(_handleIncomingMessage);
   }
 
   void reset() {
@@ -103,22 +96,17 @@ class ChatViewModel extends ChangeNotifier {
     someoneIsTyping = false;
     typingUserName = null;
     isInCall = false;
-    incomingCall = false; // Limpiar también en reset
+    incomingCall = false;
     errorMessage = null;
     _messageSubscription?.cancel();
     _messageSubscription = null;
   }
 
-  /// Calcula el shift aleatorio para la línea conectora.
-  /// Alterna dirección según la posición del mensaje, igual que TranscriptState.kt:
-  ///   direction = if (position % 2 == 0) 1f else -1f
-  ///   shift = randomBetween(MinLineShift, MaxLineShift) * direction
-  /// El primer mensaje (índice 0) no tiene shift — la línea sale recta.
   double _computeLineShift(int messageIndex) {
     if (messageIndex == 0) return 0.0;
     final direction = (messageIndex % 2 == 0) ? 1.0 : -1.0;
-    final magnitude = _kMinLineShift +
-        _rng.nextDouble() * (_kMaxLineShift - _kMinLineShift);
+    final magnitude =
+        _kMinLineShift + _rng.nextDouble() * (_kMaxLineShift - _kMinLineShift);
     return magnitude * direction;
   }
 
@@ -128,10 +116,7 @@ class ChatViewModel extends ChangeNotifier {
         someoneIsTyping = false;
         typingUserName = null;
       }
-
-      // El índice que tendrá este mensaje en la lista
       final idx = messages.length;
-
       messages.add(ChatMessageUi(
         id: message.id,
         text: message.content,
@@ -175,18 +160,29 @@ class ChatViewModel extends ChangeNotifier {
           break;
 
         case 'CALL_START':
-        // Si no soy yo quien llamó, es una llamada entrante
+        // FIX Bug 2 y 3:
+        // Solo marcamos llamada ENTRANTE si NO somos nosotros quienes la
+        // iniciamos. El inyección local de sendMessage hace que el propio
+        // llamante reciba su propio CALL_START — lo ignoramos para no
+        // retroalimentar el flujo.
           if (message.senderId != myIp) {
-            incomingCall = true;
-            incomingCallerName = message.senderName;
-            incomingCallerInitial =
-            message.senderName.isNotEmpty ? message.senderName[0] : '?';
-            incomingCallerColor = _colorForUser(message.senderId);
+            // Evitar abrir CallScreen varias veces si llegan múltiples
+            // CALL_START del mismo emisor (p.ej. reintentos)
+            if (!incomingCall && !isInCall) {
+              incomingCall = true;
+              incomingCallerName = message.senderName;
+              incomingCallerInitial = message.senderName.isNotEmpty
+                  ? message.senderName[0]
+                  : '?';
+              incomingCallerColor = _colorForUser(message.senderId);
+            }
           }
           isInCall = true;
           messages.add(ChatMessageUi(
             id: message.id,
-            text: '${message.senderName} inició una llamada',
+            text: message.senderId == myIp
+                ? 'Iniciaste una llamada'
+                : '${message.senderName} inició una llamada',
             senderName: 'Sistema',
             isMe: false,
             isSystem: true,
@@ -197,7 +193,7 @@ class ChatViewModel extends ChangeNotifier {
 
         case 'CALL_END':
           isInCall = false;
-          incomingCall = false; // limpiar también
+          incomingCall = false;
           messages.add(ChatMessageUi(
             id: message.id,
             text: 'La llamada ha terminado',
@@ -265,11 +261,24 @@ class ChatViewModel extends ChangeNotifier {
     }
   }
 
+  /// Aceptar llamada entrante.
+  /// FIX: NO llama a startVoice.execute() completo porque eso enviaría
+  /// otro CALL_START por la red, creando un bucle.
+  /// Solo arranca el audio local (player + recorder) sin notificar.
   Future<void> acceptCall() async {
+    // Limpiar flag ANTES de cualquier await para que el listener del
+    // ChatScreen no vuelva a abrir otra CallScreen.
     incomingCall = false;
     notifyListeners();
-    // Abrir audio en ambas direcciones
-    await _startVoice.execute();
+
+    // Solo iniciar el audio en este dispositivo — el CALL_START ya fue
+    // enviado por quien llamó, no necesitamos enviarlo de nuevo.
+    try {
+      await _startVoice.executeAudioOnly();
+    } catch (e) {
+      errorMessage = 'Error al aceptar llamada: $e';
+      notifyListeners();
+    }
   }
 
   Color _colorForUser(String ip) {

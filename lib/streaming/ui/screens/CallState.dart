@@ -4,18 +4,18 @@ import '../theme/P5Theme.dart';
 import '../widgets/P5BackgroundParticles.dart';
 
 enum CallState {
-  calling,     // tú iniciaste, esperando que el otro acepte
-  incoming,    // te están llamando
-  connected,   // en llamada activa
+  calling,    // tú iniciaste, esperando que el otro acepte
+  incoming,   // te están llamando
+  connected,  // en llamada activa
 }
 
 class CallScreen extends StatefulWidget {
-  final String callerName;      // nombre de quien llama
-  final String callerInitial;   // inicial para el avatar
-  final Color callerColor;      // color del avatar
+  final String callerName;
+  final String callerInitial;
+  final Color callerColor;
   final CallState initialState;
   final VoidCallback onHangUp;
-  final VoidCallback? onAccept; // solo para estado incoming
+  final VoidCallback? onAccept;
 
   const CallScreen({
     super.key,
@@ -37,11 +37,8 @@ class _CallScreenState extends State<CallScreen>
   late AnimationController _pulseController;
   late Animation<double> _pulse;
 
-  // Cronómetro de llamada conectada
   Timer? _timer;
   int _seconds = 0;
-
-  // Animación de los puntos "Llamando..."
   int _dots = 1;
   Timer? _dotsTimer;
 
@@ -50,7 +47,6 @@ class _CallScreenState extends State<CallScreen>
     super.initState();
     _state = widget.initialState;
 
-    // Pulso del avatar
     _pulseController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 900),
@@ -60,27 +56,27 @@ class _CallScreenState extends State<CallScreen>
       CurvedAnimation(parent: _pulseController, curve: Curves.easeInOutSine),
     );
 
-    // Puntos animados para "Llamando..."
-    if (_state == CallState.calling) {
-      _startDotsAnimation();
-    }
+    if (_state == CallState.calling) _startDotsAnimation();
+    // Si ya llegamos como connected (raro pero posible), arrancar timer
+    if (_state == CallState.connected) _startTimer();
   }
 
   void _startDotsAnimation() {
+    _dotsTimer?.cancel();
     _dotsTimer = Timer.periodic(const Duration(milliseconds: 500), (_) {
       if (mounted) setState(() => _dots = (_dots % 3) + 1);
     });
   }
 
   void _startTimer() {
+    _timer?.cancel();
     _timer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (mounted) setState(() => _seconds++);
     });
   }
 
-  // Llamado desde ChatViewModel cuando llega CALL_ACCEPT o cuando
-  // el otro dispositivo empieza a enviar audio
   void connectCall() {
+    if (!mounted) return;
     setState(() => _state = CallState.connected);
     _dotsTimer?.cancel();
     _startTimer();
@@ -106,11 +102,11 @@ class _CallScreenState extends State<CallScreen>
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: kPersonaBlack,
+      // SingleChildScrollView evita el overflow cuando el sistema insets cambian
       body: Stack(
         children: [
           const Positioned.fill(child: P5BackgroundParticles()),
 
-          // Franja roja diagonal de fondo estilo P5
           Positioned(
             top: 0, left: 0, right: 0,
             child: ClipPath(
@@ -123,81 +119,95 @@ class _CallScreenState extends State<CallScreen>
           ),
 
           SafeArea(
-            child: Column(
-              children: [
-                const SizedBox(height: 40),
+            // FIX Bug 1: usar un SingleChildScrollView dentro del SafeArea
+            // para que si el contenido no cabe (pantallas pequeñas, insets del
+            // sistema, teclado) haga scroll en lugar de overflowear.
+            child: SingleChildScrollView(
+              physics: const NeverScrollableScrollPhysics(),
+              child: ConstrainedBox(
+                // Garantizamos que el contenido ocupe al menos la altura
+                // disponible, pero puede crecer si fuera necesario.
+                constraints: BoxConstraints(
+                  minHeight: MediaQuery.of(context).size.height -
+                      MediaQuery.of(context).padding.top -
+                      MediaQuery.of(context).padding.bottom,
+                ),
+                child: IntrinsicHeight(
+                  child: Column(
+                    children: [
+                      const SizedBox(height: 40),
 
-                // Estado de la llamada
-                Transform.rotate(
-                  angle: -0.03,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 20, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: kPersonaBlack,
-                      border: Border.all(color: kPersonaWhite, width: 2),
-                    ),
-                    child: Text(
-                      _stateLabel,
-                      style: const TextStyle(
-                        color: kPersonaWhite,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w900,
-                        fontStyle: FontStyle.italic,
-                        letterSpacing: 3,
+                      // Estado de la llamada
+                      Transform.rotate(
+                        angle: -0.03,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 20, vertical: 8),
+                          decoration: BoxDecoration(
+                            color: kPersonaBlack,
+                            border: Border.all(color: kPersonaWhite, width: 2),
+                          ),
+                          child: Text(
+                            _stateLabel,
+                            style: const TextStyle(
+                              color: kPersonaWhite,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w900,
+                              fontStyle: FontStyle.italic,
+                              letterSpacing: 3,
+                            ),
+                          ),
+                        ),
                       ),
-                    ),
+
+                      const SizedBox(height: 48),
+
+                      ScaleTransition(
+                        scale: _pulse,
+                        child: _buildAvatar(),
+                      ),
+
+                      const SizedBox(height: 24),
+
+                      Text(
+                        widget.callerName.toUpperCase(),
+                        style: const TextStyle(
+                          color: kPersonaWhite,
+                          fontSize: 28,
+                          fontWeight: FontWeight.w900,
+                          fontStyle: FontStyle.italic,
+                          letterSpacing: 2,
+                        ),
+                      ),
+
+                      const SizedBox(height: 12),
+
+                      Text(
+                        _state == CallState.connected
+                            ? _timerText
+                            : _state == CallState.calling
+                            ? 'LLAMANDO$_dotsText'
+                            : 'LLAMADA ENTRANTE',
+                        style: TextStyle(
+                          color: _state == CallState.connected
+                              ? const Color(0xFF00C853)
+                              : kPersonaWhite.withOpacity(0.7),
+                          fontSize: 16,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: 2,
+                        ),
+                      ),
+
+                      // Spacer flexible — funciona dentro de IntrinsicHeight
+                      const Expanded(child: SizedBox()),
+
+                      _buildActions(),
+
+                      const SizedBox(height: 48),
+                    ],
                   ),
                 ),
-
-                const SizedBox(height: 48),
-
-                // Avatar pulsante
-                ScaleTransition(
-                  scale: _pulse,
-                  child: _buildAvatar(),
-                ),
-
-                const SizedBox(height: 24),
-
-                // Nombre
-                Text(
-                  widget.callerName.toUpperCase(),
-                  style: const TextStyle(
-                    color: kPersonaWhite,
-                    fontSize: 28,
-                    fontWeight: FontWeight.w900,
-                    fontStyle: FontStyle.italic,
-                    letterSpacing: 2,
-                  ),
-                ),
-
-                const SizedBox(height: 12),
-
-                // Cronómetro o puntos
-                Text(
-                  _state == CallState.connected
-                      ? _timerText
-                      : _state == CallState.calling
-                      ? 'LLAMANDO$_dotsText'
-                      : 'LLAMADA ENTRANTE',
-                  style: TextStyle(
-                    color: _state == CallState.connected
-                        ? const Color(0xFF00C853)
-                        : kPersonaWhite.withOpacity(0.7),
-                    fontSize: 16,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: 2,
-                  ),
-                ),
-
-                const Spacer(),
-
-                // Botones de acción
-                _buildActions(),
-
-                const SizedBox(height: 48),
-              ],
+              ),
             ),
           ),
         ],
@@ -247,7 +257,6 @@ class _CallScreenState extends State<CallScreen>
 
   Widget _buildActions() {
     if (_state == CallState.incoming) {
-      // Dos botones: rechazar y aceptar
       return Row(
         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
         children: [
@@ -262,6 +271,9 @@ class _CallScreenState extends State<CallScreen>
             color: const Color(0xFF00C853),
             label: 'ACEPTAR',
             onTap: () {
+              // FIX Bug 2: transicionamos visualmente PRIMERO,
+              // LUEGO notificamos al exterior. Así evitamos que el
+              // widget se desmonte antes de que la animación termine.
               setState(() => _state = CallState.connected);
               _startTimer();
               widget.onAccept?.call();
@@ -271,7 +283,6 @@ class _CallScreenState extends State<CallScreen>
       );
     }
 
-    // calling o connected: solo botón colgar
     return _CallButton(
       icon: Icons.call_end,
       color: kPersonaRed,
@@ -281,6 +292,7 @@ class _CallScreenState extends State<CallScreen>
   }
 }
 
+// ---------------------------------------------------------------
 class _CallButton extends StatefulWidget {
   final IconData icon;
   final Color color;
