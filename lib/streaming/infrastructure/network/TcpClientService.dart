@@ -13,53 +13,62 @@ class TcpClientService {
   Stream<Message> get messageStream => _messageController.stream;
 
   Future<void> connect(String ipAddress, int port) async {
-    try {
-      // 1. Si ya había un socket o suscripción, los cerramos primero
-      await _socketSubscription?.cancel();
-      await _socket?.close();
+    await _socketSubscription?.cancel();
+    await _socket?.close();
 
-      _socket = await Socket.connect(ipAddress, port);
-      print("🔌 [TcpClientService] Conectado exitosamente a $ipAddress:$port");
+    const maxRetries = 5;
+    const retryDelay = Duration(seconds: 2);
 
-      final StringBuffer _buffer = StringBuffer();
+    for (int attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        print("🔌 [TcpClientService] Intento $attempt/$maxRetries → $ipAddress:$port");
+        _socket = await Socket.connect(
+          ipAddress,
+          port,
+          timeout: const Duration(seconds: 5),
+        );
+        print("✅ [TcpClientService] Conectado a $ipAddress:$port");
 
-      // 2. Guardamos la suscripción en la variable
-      _socketSubscription = _socket!.listen(
-            (data) {
-          final decoded = utf8.decode(data);
-          _buffer.write(decoded);
-          final raw = _buffer.toString();
-          final parts = raw.split('\n');
+        final buffer = StringBuffer();
 
-          _buffer.clear();
-          _buffer.write(parts.last);
+        _socketSubscription = _socket!.listen(
+              (data) {
+            buffer.write(utf8.decode(data));
+            final raw = buffer.toString();
+            final parts = raw.split('\n');
+            buffer.clear();
+            buffer.write(parts.last);
 
-          for (int i = 0; i < parts.length - 1; i++) {
-            final part = parts[i].trim();
-            if (part.isEmpty) continue;
-            try {
-              final json = jsonDecode(part);
-              final message = Message.fromMap(json);
-              print("✉️ [TcpClientService] Mensaje procesado: ${message.content}");
-              _messageController.add(message);
-            } catch (e) {
-              print("❌ [TcpClientService] Error al decodificar JSON: $e");
+            for (int i = 0; i < parts.length - 1; i++) {
+              final part = parts[i].trim();
+              if (part.isEmpty) continue;
+              try {
+                final json = jsonDecode(part);
+                final message = Message.fromMap(json);
+                print("✉️ [TcpClientService] Mensaje: ${message.content}");
+                _messageController.add(message);
+              } catch (e) {
+                print("❌ [TcpClientService] Error JSON: $e");
+              }
             }
-          }
-        },
-        onError: (e) {
-          print("❌ [TcpClientService] Error en el socket: $e");
-          // No lanzamos excepción aquí para no romper el stream,
-          // mejor manejamos la desconexión
-        },
-        onDone: () {
-          print("🔌 [TcpClientService] Socket cerrado");
-        },
-        cancelOnError: true, // Importante: cancelar si hay error
-      );
-    } catch (e) {
-      print("❌ [TcpClientService] Fallo al conectar: $e");
-      rethrow;
+          },
+          onError: (e) => print("❌ [TcpClientService] Error socket: $e"),
+          onDone: () => print("🔌 [TcpClientService] Socket cerrado"),
+          cancelOnError: true,
+        );
+
+        return; // éxito, salir del loop
+
+      } catch (e) {
+        print("⚠️ [TcpClientService] Intento $attempt fallido: $e");
+        if (attempt < maxRetries) {
+          print("⏳ Reintentando en ${retryDelay.inSeconds}s...");
+          await Future.delayed(retryDelay);
+        } else {
+          print("❌ [TcpClientService] Agotados los reintentos");
+          rethrow;
+        }
+      }
     }
   }
 
