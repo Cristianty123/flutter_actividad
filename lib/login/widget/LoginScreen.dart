@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import '../component/P5ErrorDialog.dart';
 import '../service/AuthService.dart';
+import '../service/BiometricService.dart';
+import '../service/database/DatabaseHelper.dart';
 import '../transitions/P5Transitions.dart';
 import '../component/P5AnimatedButton.dart';
-import '../component/P5SecondaryButton.dart'; // IMPORTA EL NUEVO
+import '../component/P5SecondaryButton.dart';
 import 'ConnectionStatus.dart';
 import 'HomeScreen.dart';
 import 'RegisterScreen.dart';
@@ -15,11 +17,48 @@ class LoginScreen extends StatefulWidget {
   State<LoginScreen> createState() => _LoginScreenState();
 }
 
-class _LoginScreenState extends State<LoginScreen> {
+class _LoginScreenState extends State<LoginScreen>
+    with SingleTickerProviderStateMixin {
   final TextEditingController _userController = TextEditingController();
   final TextEditingController _passController = TextEditingController();
   final AuthService _authService = AuthService();
+  final DatabaseHelper _dbHelper = DatabaseHelper();
+
   bool _isLoading = false;
+  bool _biometricAvailable = false;        // el dispositivo tiene biometría
+  bool _biometricUserExists = false;       // hay un usuario con cara vinculada
+
+  // Animación del pulso del botón de cara
+  late AnimationController _faceController;
+  late Animation<double> _facePulse;
+
+  @override
+  void initState() {
+    super.initState();
+    _faceController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 900),
+    )..repeat(reverse: true);
+    _facePulse = Tween<double>(begin: 1.0, end: 1.1)
+        .animate(CurvedAnimation(parent: _faceController, curve: Curves.easeInOut));
+
+    _checkBiometricState();
+  }
+
+  @override
+  void dispose() {
+    _faceController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _checkBiometricState() async {
+    final available = await BiometricService.isAvailable();
+    final user = await _dbHelper.getUserWithBiometric();
+    setState(() {
+      _biometricAvailable = available;
+      _biometricUserExists = user != null;
+    });
+  }
 
   void _handleLogin() async {
     setState(() => _isLoading = true);
@@ -38,11 +77,48 @@ class _LoginScreenState extends State<LoginScreen> {
       P5ErrorDialog.show(context, "System Error", result['message']);
     }
   }
+
+  /// Login con cara: autentica y busca el usuario biométrico en la DB local
+  void _handleFaceLogin() async {
+    setState(() => _isLoading = true);
+
+    final result = await BiometricService.authenticate(
+      reason: "Escanea tu cara para iniciar sesión en Lab Login",
+    );
+
+    if (!result['success']) {
+      setState(() => _isLoading = false);
+      P5ErrorDialog.show(context, "Acceso Denegado", result['message']);
+      return;
+    }
+
+    // Biometría OK → recuperamos el usuario vinculado
+    final user = await _dbHelper.getUserWithBiometric();
+    setState(() => _isLoading = false);
+
+    if (user != null) {
+      Navigator.pushReplacement(
+        context,
+        P5Transitions.createRoute(HomeScreen(username: user.username)),
+      );
+    } else {
+      P5ErrorDialog.show(
+        context,
+        "Sin Cuenta Vinculada",
+        "No hay ninguna cuenta con cara registrada. Inicia sesión con tu contraseña primero.",
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.black,
-      appBar: AppBar(backgroundColor: Colors.transparent, elevation: 0, actions: const [ConnectionStatus()]),
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        actions: const [ConnectionStatus()],
+      ),
       body: SingleChildScrollView(
         child: SizedBox(
           height: MediaQuery.of(context).size.height - 80,
@@ -50,7 +126,11 @@ class _LoginScreenState extends State<LoginScreen> {
             children: [
               ClipPath(
                 clipper: JaggedClipper(),
-                child: Container(width: double.infinity, height: 500, color: const Color(0xFFD32F2F)),
+                child: Container(
+                  width: double.infinity,
+                  height: 500,
+                  color: const Color(0xFFD32F2F),
+                ),
               ),
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 30),
@@ -59,21 +139,32 @@ class _LoginScreenState extends State<LoginScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     _p5Title("LOG IN"),
-                    const SizedBox(height: 60),
+                    const SizedBox(height: 40),
                     _p5Input("USER NAME", _userController, angle: 0.02),
                     const SizedBox(height: 20),
                     _p5Input("PASSWORD", _passController, isObscure: true, angle: -0.01),
-                    const SizedBox(height: 50),
+                    const SizedBox(height: 35),
+
+                    // ── Botón de inicio con cara (solo si hay usuario vinculado) ──
+                    if (_biometricAvailable && _biometricUserExists)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 20),
+                        child: Center(
+                          child: _buildFaceLoginButton(),
+                        ),
+                      ),
+
+                    // ── Fila inferior: Crear cuenta | Iniciar sesión ──
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        // AQUÍ ESTÁ TU BOTÓN BLANCO BONITO
                         P5SecondaryButton(
                           label: "CREAR CUENTA",
-                          onTap: () => Navigator.of(context).push(P5Transitions.createRoute(const RegisterScreen())),
+                          onTap: () => Navigator.of(context).push(
+                            P5Transitions.createRoute(const RegisterScreen()),
+                          ),
                           angle: 0.08,
                         ),
-
                         _isLoading
                             ? const CircularProgressIndicator(color: Colors.white)
                             : P5AnimatedButton(
@@ -93,18 +184,71 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
+  /// Botón circular con pulso para el login con cara
+  Widget _buildFaceLoginButton() {
+    return Column(
+      children: [
+        ScaleTransition(
+          scale: _facePulse,
+          child: GestureDetector(
+            onTap: _handleFaceLogin,
+            child: Container(
+              width: 80,
+              height: 80,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: Colors.black,
+                border: Border.all(color: Colors.white, width: 3),
+                boxShadow: const [
+                  BoxShadow(color: Color(0xFFD32F2F), blurRadius: 18, spreadRadius: 2),
+                ],
+              ),
+              child: const Icon(Icons.face_unlock_outlined, color: Colors.white, size: 42),
+            ),
+          ),
+        ),
+        const SizedBox(height: 8),
+        Transform.rotate(
+          angle: -0.03,
+          child: const Text(
+            "USAR MI CARA",
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 11,
+              fontWeight: FontWeight.w900,
+              fontStyle: FontStyle.italic,
+              letterSpacing: 1.5,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _p5Title(String text) {
     return Transform.rotate(
       angle: -0.1,
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-        decoration: BoxDecoration(color: Colors.black, border: Border.all(color: Colors.white, width: 3)),
-        child: Text(text, style: const TextStyle(color: Colors.white, fontSize: 45, fontWeight: FontWeight.w900, fontStyle: FontStyle.italic)),
+        decoration: BoxDecoration(
+          color: Colors.black,
+          border: Border.all(color: Colors.white, width: 3),
+        ),
+        child: Text(
+          text,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 45,
+            fontWeight: FontWeight.w900,
+            fontStyle: FontStyle.italic,
+          ),
+        ),
       ),
     );
   }
 
-  Widget _p5Input(String hint, TextEditingController controller, {bool isObscure = false, double angle = 0.0}) {
+  Widget _p5Input(String hint, TextEditingController controller,
+      {bool isObscure = false, double angle = 0.0}) {
     return Transform.rotate(
       angle: angle,
       child: Container(
@@ -113,7 +257,12 @@ class _LoginScreenState extends State<LoginScreen> {
           controller: controller,
           obscureText: isObscure,
           style: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold),
-          decoration: InputDecoration(hintText: hint, contentPadding: const EdgeInsets.all(15), border: InputBorder.none, hintStyle: TextStyle(color: Colors.grey[600])),
+          decoration: InputDecoration(
+            hintText: hint,
+            contentPadding: const EdgeInsets.all(15),
+            border: InputBorder.none,
+            hintStyle: TextStyle(color: Colors.grey[600]),
+          ),
         ),
       ),
     );
@@ -132,5 +281,7 @@ class JaggedClipper extends CustomClipper<Path> {
     path.close();
     return path;
   }
-  @override bool shouldReclip(CustomClipper<Path> oldClipper) => false;
+
+  @override
+  bool shouldReclip(CustomClipper<Path> oldClipper) => false;
 }

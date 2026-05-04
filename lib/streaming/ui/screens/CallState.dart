@@ -102,7 +102,7 @@ class _CallScreenState extends State<CallScreen>
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: kPersonaBlack,
-      // SingleChildScrollView evita el overflow cuando el sistema insets cambian
+
       body: Stack(
         children: [
           const Positioned.fill(child: P5BackgroundParticles()),
@@ -119,95 +119,72 @@ class _CallScreenState extends State<CallScreen>
           ),
 
           SafeArea(
-            // FIX Bug 1: usar un SingleChildScrollView dentro del SafeArea
-            // para que si el contenido no cabe (pantallas pequeñas, insets del
-            // sistema, teclado) haga scroll en lugar de overflowear.
-            child: SingleChildScrollView(
-              physics: const NeverScrollableScrollPhysics(),
-              child: ConstrainedBox(
-                // Garantizamos que el contenido ocupe al menos la altura
-                // disponible, pero puede crecer si fuera necesario.
-                constraints: BoxConstraints(
-                  minHeight: MediaQuery.of(context).size.height -
-                      MediaQuery.of(context).padding.top -
-                      MediaQuery.of(context).padding.bottom,
-                ),
-                child: IntrinsicHeight(
-                  child: Column(
-                    children: [
-                      const SizedBox(height: 40),
+            child: Column(
+              children: [
+                const SizedBox(height: 40),
 
-                      // Estado de la llamada
-                      Transform.rotate(
-                        angle: -0.03,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 20, vertical: 8),
-                          decoration: BoxDecoration(
-                            color: kPersonaBlack,
-                            border: Border.all(color: kPersonaWhite, width: 2),
-                          ),
-                          child: Text(
-                            _stateLabel,
-                            style: const TextStyle(
-                              color: kPersonaWhite,
-                              fontSize: 13,
-                              fontWeight: FontWeight.w900,
-                              fontStyle: FontStyle.italic,
-                              letterSpacing: 3,
-                            ),
-                          ),
-                        ),
+                Transform.rotate(
+                  angle: -0.03,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: kPersonaBlack,
+                      border: Border.all(color: kPersonaWhite, width: 2),
+                    ),
+                    child: Text(
+                      _stateLabel,
+                      style: const TextStyle(
+                        color: kPersonaWhite,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w900,
+                        fontStyle: FontStyle.italic,
+                        letterSpacing: 3,
                       ),
-
-                      const SizedBox(height: 48),
-
-                      ScaleTransition(
-                        scale: _pulse,
-                        child: _buildAvatar(),
-                      ),
-
-                      const SizedBox(height: 24),
-
-                      Text(
-                        widget.callerName.toUpperCase(),
-                        style: const TextStyle(
-                          color: kPersonaWhite,
-                          fontSize: 28,
-                          fontWeight: FontWeight.w900,
-                          fontStyle: FontStyle.italic,
-                          letterSpacing: 2,
-                        ),
-                      ),
-
-                      const SizedBox(height: 12),
-
-                      Text(
-                        _state == CallState.connected
-                            ? _timerText
-                            : _state == CallState.calling
-                            ? 'LLAMANDO$_dotsText'
-                            : 'LLAMADA ENTRANTE',
-                        style: TextStyle(
-                          color: _state == CallState.connected
-                              ? const Color(0xFF00C853)
-                              : kPersonaWhite.withOpacity(0.7),
-                          fontSize: 16,
-                          fontWeight: FontWeight.w900,
-                          letterSpacing: 2,
-                        ),
-                      ),
-
-                      // Spacer flexible — funciona dentro de IntrinsicHeight
-                      const Expanded(child: SizedBox()),
-
-                      _buildActions(),
-
-                      const SizedBox(height: 48),
-                    ],
+                    ),
                   ),
                 ),
-              ),
+
+                const SizedBox(height: 48),
+
+                ScaleTransition(scale: _pulse, child: _buildAvatar()),
+
+                const SizedBox(height: 24),
+
+                Text(
+                  widget.callerName.toUpperCase(),
+                  style: const TextStyle(
+                    color: kPersonaWhite,
+                    fontSize: 28,
+                    fontWeight: FontWeight.w900,
+                    fontStyle: FontStyle.italic,
+                    letterSpacing: 2,
+                  ),
+                ),
+
+                const SizedBox(height: 12),
+
+                Text(
+                  _state == CallState.connected
+                      ? _timerText
+                      : _state == CallState.calling
+                      ? 'LLAMANDO$_dotsText'
+                      : 'LLAMADA ENTRANTE',
+                  style: TextStyle(
+                    color: _state == CallState.connected
+                        ? const Color(0xFF00C853)
+                        : kPersonaWhite.withOpacity(0.7),
+                    fontSize: 16,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 2,
+                  ),
+                ),
+
+                const Spacer(),
+
+                _buildActions(),
+
+                const SizedBox(height: 48),
+              ],
             ),
           ),
         ],

@@ -177,7 +177,7 @@ class ModuleSelectorScreen extends StatelessWidget {
         sendMessage: SendMessageUseCase(chatRepo, userRepo),
         watchMessages: WatchMessagesUseCase(chatRepo),
         sendTypingStatus: SendTypingStatusUseCase(chatRepo, userRepo),
-        startVoice: StartVoiceStreamUseCase(audioRepo, wifiRepo, chatRepo),
+        startVoice: StartVoiceStreamUseCase(audioRepo, wifiRepo, chatRepo, userRepo),
         stopVoice: StopVoiceStreamUseCase(audioRepo, chatRepo),
         myIp: '',
       ),

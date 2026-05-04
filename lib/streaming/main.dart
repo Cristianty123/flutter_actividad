@@ -60,7 +60,7 @@ void main() async {
   final sendMessage   = SendMessageUseCase(chatRepo, userRepo);
   final watchMessages = WatchMessagesUseCase(chatRepo);
   final sendTyping    = SendTypingStatusUseCase(chatRepo, userRepo);
-  final startVoice    = StartVoiceStreamUseCase(audioRepo, wifiRepo, chatRepo);
+  final startVoice = StartVoiceStreamUseCase(audioRepo, wifiRepo, chatRepo, userRepo);
   final stopVoice     = StopVoiceStreamUseCase(audioRepo, chatRepo);
 
   // El IP real no está disponible aún — ChatScreen lo cargará en initState()
